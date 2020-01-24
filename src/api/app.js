@@ -1,54 +1,43 @@
 const bodyParser = require('body-parser');
-const express  = require('express');
-const handler = require('./handler');
-const setupWebSocketServer = require('./WebSocketServer');
+const express = require('express');
+const axios = require('axios');
 
-const createNodeApp = options => {
+const app = express();
 
-    const app = express();
+const state = require('./state');
 
-    const url = options.url || 'localhost';
+// parse request body
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
-    let appData = {
-        host: `${url}:${options.port}`,
+app.get('/api/resource', async (req, res) => {
+    // here I need to get most updated "data"
+    res.send(state.appData);
+});
+
+app.post('/api/resource', async (req, res) => {
+
+    const messageData = {
+        host: `${req.headers.host}`,
         // date: (new Date(Date.now())).toUTCString(),
-        data: null,
+        data: req.body,
     };
 
-    const onMessage = (message) => {
-        // console.log('Message received on Websocket (%s): %s', port, message);
-        const res = JSON.parse(message);
-        appData=res;
-    };
+    console.log('in resource: messageData =', messageData);
 
-    // parse request body
-    app.use(bodyParser.json());
-    app.use(bodyParser.urlencoded({ extended: true }));
+    try {
+        const url = `${process.env.OTHER_SERVER_ADDRESS}:${process.env.OTHER_SERVER_PORT}/api/update`;
+        console.log('sending %s to %s', messageData, url);
+        await axios.post(url, messageData);
 
-    app.get('/api/resource', async (req, res) => {
-        // here I need to get most updated "data"
-        res.send(appData);
-    });
-
-    app.post('/api/resource', handler);
-
-    // const wsPort = options.wsPort;
-        // options.wsPort ? options.wsPort : options.port+2;
-
-    const wss = //options.wss ? options.wss :
-        setupWebSocketServer({
-        port: options.wsPort,
-        onmessage: onMessage,
-    });
-
-    app.listen(options.port, () => console.log(`Example backend API listening on port ${options.port}!`));
-
-    return {
-        app: app,
-        // appData: appData,
-        // onMessage: onMessage,
-        // wss: wss,
+        state.appData = messageData;
+        console.log('appData in resource = ', state.appData);
+        res.send(req.body);
     }
-};
+    catch(error) {
+        console.log(error);
+        res.send(500);
+    }
+});
 
-module.exports = createNodeApp;
+module.exports = app;
